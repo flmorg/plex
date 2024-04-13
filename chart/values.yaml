@@ -1,0 +1,94 @@
+statefulSet:
+  serviceName: service
+  serviceAccountName: service-account
+  replicas: 1
+  containers:
+    - name: plex
+      image:
+        repository: index.docker.io/plexinc/pms-docker
+        tag: latest
+      ports:
+        - name: pms
+          containerPort: 32400
+      env:
+        - name: ADVERTISE_IP
+          value: https://plex.mariusne.com
+        - name: PLEX_UID
+          value: "1000"
+        - name: PLEX_GID
+          value: "1000"
+        - name: TZ
+          value: Europe/Bucharest
+      resources:
+        requests:
+          cpu: 0m
+          memory: 0Mi
+        limits:
+          cpu: 12000m
+          memory: 14000Mi
+      volumeMounts:
+        - name: storage
+          mountPath: /config/Library
+          subPath: plex/config/library
+        - name: storage
+          mountPath: /media
+          subPath: media
+        - name: storage
+          mountPath: /transcoding
+          subPath: shm
+        - name: storage-quicksync
+          mountPath: /dev/dri
+      securityContext:
+        privileged: true
+  volumes:
+    - name: storage
+      type: pvc
+      typeName: storage-pvc
+    - name: storage-quicksync
+      type: pvc
+      typeName: storage-quicksync-pvc
+
+ingress:
+  name: ingress
+  tls:
+    secretName: tls-secret
+  hosts:
+    - host: plex.@vault(secrets/data/domain main | DOMAIN_NAME)
+      paths:
+        - path: "/"
+          pathType: Prefix
+          serviceName: service
+          servicePort: pms
+
+pvcs:
+  - name: storage-pvc
+    storageClassName: local-path-persistent
+    accessModes:
+      - ReadWriteOnce
+    size: 1Gi
+    volumeMode: Filesystem
+  - name: storage-quicksync-pvc
+    storageClassName: local-path-quicksync
+    accessModes:
+      - ReadWriteOnce
+    size: 1Gi
+    volumeMode: Filesystem
+
+serviceAccount:
+  name: service-account
+
+services:
+  - name: service
+    type: ClusterIP
+    ports:
+      - name: pms
+        protocol: TCP
+        port: 32400
+
+vaultSecrets:
+  - name: tls-secret
+    type: kubernetes.io/tls
+    path: secrets/certificates
+    templates:
+      tls.crt: "{% .Secrets.tls_crt %}"
+      tls.key: "{% .Secrets.tls_key %}"
