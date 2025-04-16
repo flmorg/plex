@@ -48,17 +48,29 @@ statefulSet:
       type: pvc
       typeName: storage-quicksync-pvc
 
-ingress:
-  name: ingress
-  tls:
+certificates:
+  - name: sub
     secretName: tls-secret
-  hosts:
-    - host: plex.@vault(secrets/data/domain main | DOMAIN_NAME)
-      paths:
-        - path: "/"
-          pathType: Prefix
-          serviceName: service
-          servicePort: pms
+    issuerRef:
+      name: letsencrypt-dns
+      kind: ClusterIssuer
+    commonName: "*.@vault(secrets/data/domain main | DOMAIN_NAME)"
+    dnsNames:
+      - "*.@vault(secrets/data/domain main | DOMAIN_NAME)"
+    duration: 2160h  # 90 days
+    renewBefore: 360h  # 15 days
+
+ingresses:
+  - name: ingress
+    tls:
+      secretName: tls-secret
+    hosts:
+      - host: plex.@vault(secrets/data/domain main | DOMAIN_NAME)
+        paths:
+          - path: "/"
+            pathType: Prefix
+            serviceName: service
+            servicePort: pms
 
 pvcs:
   - name: storage-pvc
@@ -84,11 +96,3 @@ services:
       - name: pms
         protocol: TCP
         port: 32400
-
-vaultSecrets:
-  - name: tls-secret
-    type: kubernetes.io/tls
-    path: secrets/certificates
-    templates:
-      tls.crt: "{% .Secrets.tls_crt %}"
-      tls.key: "{% .Secrets.tls_key %}"
